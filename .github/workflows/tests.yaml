@@ -2,7 +2,7 @@ name: Flake and tests
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
 
 jobs:
   build:
