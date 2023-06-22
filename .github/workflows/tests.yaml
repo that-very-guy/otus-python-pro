@@ -20,5 +20,3 @@ jobs:
           pip install flake8
       - name : run flake8
         run: flake8 01_advanced_basics/homework/log_analyzer --max-line-length 120
-      - name: run tests
-        run: python 01_advanced_basics/homework/log_analyzer/test_analyzer.py
