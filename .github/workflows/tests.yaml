@@ -22,3 +22,5 @@ jobs:
         run: flake8 01_advanced_basics/homework/log_analyzer --max-line-length 120
       - name: run tests
         run: python 01_advanced_basics/homework/log_analyzer/test_analyzer.py
+      - name: run tests hw_03
+        run: python 03_oop/homework/test.py
