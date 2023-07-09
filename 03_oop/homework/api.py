@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import abc
 import json
-import datetime
 import logging
 import hashlib
 import uuid
+from datetime import datetime, timedelta
 from optparse import OptionParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+from scoring import get_score, get_interests
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -36,53 +37,210 @@ GENDERS = {
 }
 
 
-class CharField(object):
-    pass
+class Field:
+    def __init__(self, required=False, nullable=False):
+        self.required = required
+        self.nullable = nullable
+
+    def validate(self, value):
+        if self.required and value is None:
+            raise ValueError('Missed required field')
+        if self.nullable and value is None:
+            raise ValueError("Field can't be nullable")
 
 
-class ArgumentsField(object):
-    pass
+class CharField(Field):
+    field_type = str
+
+    def validate(self, value):
+        super().validate(value)
+        if not isinstance(value, self.field_type):
+            raise ValueError(f'Wrong value type. {self.field_type} expected,  got {type(value)}')
+
+
+class ArgumentsField(Field):
+    field_type = dict
+
+    def validate(self, value):
+        super().validate(value)
+        if not isinstance(value, self.field_type):
+            raise ValueError(f'Wrong value type. {self.field_type} expected,  got {type(value)}')
 
 
 class EmailField(CharField):
-    pass
+    def validate(self, value):
+        super().validate(value)
+        if value and '@' not in value:
+            raise ValueError('Wrong email format')
 
 
-class PhoneField(object):
-    pass
+class PhoneField(Field):
+    field_type = str, int
+
+    def validate(self, value):
+        super().validate(value)
+        if not isinstance(value, self.field_type):
+            raise ValueError(f'Wrong value type. {self.field_type} expected,  got {type(value)}')
+        value_str = str(value)
+        if len(value_str) != 11 or not value_str.startswith('7'):
+            raise ValueError('Wrong phone number format')
+        if value:
+            try:
+                int(value)
+            except ValueError:
+                raise ValueError('Wrong phone number format. Only digests are allowed.')
 
 
-class DateField(object):
-    pass
+class DateField(CharField):
+    date_format = '%d.%m.%Y'
+
+    def validate(self, value):
+        super().validate(value)
+        if not isinstance(value, self.field_type):
+            raise ValueError(f'Wrong value type. {self.field_type} expected,  got {type(value)}')
+        if value:
+            try:
+                datetime.strptime(value, self.date_format)
+            except ValueError:
+                raise ValueError('Wrong date format. DD.MM.YYYY expected')
 
 
-class BirthDayField(object):
-    pass
+class BirthDayField(DateField):
+    years_limit = 70
+
+    def validate(self, value):
+        super().validate(value)
+        if value:
+            if (datetime.now() - datetime.strptime(value, self.date_format)) > timedelta(days=365.2 * self.years_limit):
+                raise ValueError(f'Age should be less than {self.years_limit} years')
 
 
-class GenderField(object):
-    pass
+class GenderField(Field):
+    field_type = int
+
+    def validate(self, value):
+        super().validate(value)
+        if not isinstance(value, self.field_type):
+            raise ValueError(f'Wrong value type. {self.field_type} expected,  got {type(value)}')
+        if value:
+            if value not in GENDERS:
+                raise ValueError(f'Gender must be an integer within  {list(GENDERS.keys())}')
 
 
-class ClientIDsField(object):
-    pass
+class ClientIDsField(Field):
+    field_type = list
+
+    def validate(self, value):
+        super().validate(value)
+        if not isinstance(value, self.field_type):
+            raise ValueError(f'Wrong value type. {self.field_type} expected,  got {type(value)}')
+        for client_id in value:
+            if not isinstance(client_id, int):
+                raise ValueError('Client ID must be an integer')
 
 
-class ClientsInterestsRequest(object):
+class RequestMeta(type):
+
+    def __new__(cls, name, bases, attrs):
+        fields = []
+        for key, value in attrs.items():
+            if isinstance(value, Field):
+                value.name = key
+                fields.append(value)
+        new_cls = super(RequestMeta, cls).__new__(cls, name, bases, attrs)
+        # new_cls = super().__new__(cls)
+        new_cls.fields = fields
+        return new_cls
+
+
+class Request(metaclass=RequestMeta):
+    context = {}
+    
+    def __init__(self, request):
+        self.request = request
+        self.errors = []
+
+    def validate(self):
+        if not isinstance(self.request, dict):
+            self.errors.append(ERRORS[INVALID_REQUEST])
+            return False
+        for field in self.fields:
+            value = self.request.get(field.name)
+            if field.required and field.name not in self.request.keys():
+                self.errors.append(f'{ERRORS[INVALID_REQUEST]}: {field.name} is not in a query')
+            elif field.required and not field.nullable and not value:
+                self.errors.append(f'{ERRORS[INVALID_REQUEST]}: {field.name} is null')
+            elif not field.required and not value:
+                setattr(self, field.name, '')
+            else:
+                try:
+                    field.validate(value)
+                    setattr(self, field.name, value)
+                except Exception as e:
+                    self.errors.append(f'{ERRORS[INVALID_REQUEST]}: {e}')
+
+    def is_valid(self):
+        return not self.errors
+
+
+class ClientsInterestsRequest(Request):
     client_ids = ClientIDsField(required=True)
     date = DateField(required=False, nullable=True)
 
+    def fill_context(self, ctx):
+        self.context['nclients'] = ctx['nclients']
 
-class OnlineScoreRequest(object):
+    def response(self, store):
+        resp = {}
+        for cid in self.client_ids:
+            resp[cid] = get_interests(store, cid)
+        return resp
+
+
+class OnlineScoreRequest(Request):
     first_name = CharField(required=False, nullable=True)
     last_name = CharField(required=False, nullable=True)
     email = EmailField(required=False, nullable=True)
     phone = PhoneField(required=False, nullable=True)
     birthday = BirthDayField(required=False, nullable=True)
     gender = GenderField(required=False, nullable=True)
+    _acceptable_pairs = [
+        ['phone', 'email'],
+        ['first_name', 'last_name'],
+        ['gender', 'birthday'],
+    ]
+
+    def fill_context(self, ctx):
+        self.context['has'] = ctx['has']
+        self.context['is_admin'] = ctx['is_admin']
+
+    def validate(self):
+        fields = self.context.get('has', [])
+        super().validate()
+        is_valid = super().is_valid()
+        if any([set(fields).issuperset(set(pair)) for pair in self._acceptable_pairs]):
+            return is_valid and True
+        else:
+            self.errors.append(ERRORS[INVALID_REQUEST])
+            return False
+
+    def response(self, store):
+        data = {
+            'phone': self.phone,
+            'email': self.email,
+            'birthday': self.birthday,
+            'gender': self.gender,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+        }
+        if self.context['is_admin']:
+            score = int(ADMIN_SALT)
+        else:
+            score = get_score(store, **data)
+        return {'score': score}
 
 
-class MethodRequest(object):
+class MethodRequest(Request):
     account = CharField(required=False, nullable=True)
     login = CharField(required=True, nullable=True)
     token = CharField(required=True, nullable=True)
@@ -96,17 +254,47 @@ class MethodRequest(object):
 
 def check_auth(request):
     if request.is_admin:
-        digest = hashlib.sha512(datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).hexdigest()
+        digest = hashlib.sha512((datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode('utf-8')).hexdigest()
     else:
-        digest = hashlib.sha512(request.account + request.login + SALT).hexdigest()
+        digest = hashlib.sha512((request.account + request.login + SALT).encode('utf-8')).hexdigest()
     if digest == request.token:
         return True
     return False
 
 
 def method_handler(request, ctx, store):
-    response, code = None, None
-    return response, code
+    handlers = {
+        "online_score": OnlineScoreRequest,
+        "clients_interests": ClientsInterestsRequest,
+    }
+    method_request = MethodRequest(request['body'])
+    method_request.validate()
+    if not method_request.is_valid():
+        error = ', '.join(method_request.errors)
+        logging.error(error)
+        return error, INVALID_REQUEST
+    if not check_auth(method_request):
+        logging.error(ERRORS[FORBIDDEN])
+        return ERRORS[FORBIDDEN], FORBIDDEN
+    if method_request.method not in handlers:
+        logging.error(ERRORS[INVALID_REQUEST])
+        return ERRORS[INVALID_REQUEST], INVALID_REQUEST
+
+    if method_request.method == 'online_score':
+        ctx['is_admin'] = method_request.is_admin
+        ctx['has'] = [k for k, v in method_request.arguments.items() if v is not None]
+    elif method_request.method == 'clients_interests':
+        ctx['nclients'] = len(method_request.arguments.get('client_ids', []))
+    request_data = handlers[method_request.method](method_request.arguments)
+    request_data.fill_context(ctx)
+    request_data.validate()
+    if request_data.errors or not request_data.is_valid():
+        error = ', '.join(request_data.errors)
+        logging.error(error)
+        return error, INVALID_REQUEST
+    response = request_data.response(store)
+    logging.info("Success request")
+    return response, OK
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
@@ -125,7 +313,8 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         try:
             data_string = self.rfile.read(int(self.headers['Content-Length']))
             request = json.loads(data_string)
-        except:
+        except Exception as e:
+            logging.error(e)
             code = BAD_REQUEST
 
         if request:
@@ -149,7 +338,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             r = {"error": response or ERRORS.get(code, "Unknown Error"), "code": code}
         context.update(r)
         logging.info(context)
-        self.wfile.write(json.dumps(r))
+        self.wfile.write(json.dumps(r).encode('utf-8'))
         return
 
 
