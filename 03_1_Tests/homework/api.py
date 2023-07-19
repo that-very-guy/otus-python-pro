@@ -7,6 +7,7 @@ from optparse import OptionParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from scoring import get_score, get_interests
+from store import DBConnector
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -131,6 +132,8 @@ class ClientIDsField(Field):
         super().validate(value)
         if not isinstance(value, self.field_type):
             raise ValueError(f'Wrong value type. {self.field_type} expected,  got {type(value)}')
+        if not value:
+            raise ValueError('Client IDs must be a list of integers')
         for client_id in value:
             if not isinstance(client_id, int):
                 raise ValueError('Client ID must be an integer')
@@ -298,7 +301,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
         "method": method_handler
     }
-    store = None
+    store = DBConnector()
 
     def get_request_id(self, headers):
         return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)
