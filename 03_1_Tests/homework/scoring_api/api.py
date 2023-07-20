@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 from optparse import OptionParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from scoring import get_score, get_interests
-from store import DBConnector
+from .scoring import get_score, get_interests
+from .store import DBConnector
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"

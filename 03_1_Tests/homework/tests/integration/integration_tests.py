@@ -3,8 +3,7 @@ import functools
 from datetime import datetime
 from hashlib import sha512
 
-import api
-import store
+from scoring_api import api, store
 
 
 def cases(cases):

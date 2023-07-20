@@ -1,8 +1,7 @@
 import unittest
 import functools
 
-import api
-import store
+from scoring_api import api, store
 
 
 def cases(cases):
