@@ -7,8 +7,7 @@ from datetime import datetime
 from queue import Queue
 from urllib.parse import unquote
 
-from constants import EXT_TO_MIME, ERRORS, ERROR_MSG_TEMPLATE, INDEX_FILE, BAD_REQUEST, ALLOWED_METHODS, \
-    INTERNAL_ERROR, METHOD_NOT_ALLOWED, NOT_FOUND, OK
+import constants
 from logger import logger
 
 
@@ -104,15 +103,15 @@ class RequestHandler:
             if not self.raw_request:
                 return
             if len(self.raw_request) > self.max_request_line_size:
-                self.error_response(BAD_REQUEST)
+                self.error_response(constants.BAD_REQUEST)
                 return
             if not self.parse_request():
                 return
 
             client_address, client_port = self.client_address
             logger.info(f'{client_address}:{client_port} - {self.request}')
-            if self.request_method not in ALLOWED_METHODS:
-                self.error_response(METHOD_NOT_ALLOWED)
+            if self.request_method not in constants.ALLOWED_METHODS:
+                self.error_response(constants.METHOD_NOT_ALLOWED)
                 return
             handle_method = self.__getattribute__(self.request_method.lower())
             handle_method()
@@ -122,8 +121,8 @@ class RequestHandler:
             logger.error(err)
 
     def error_response(self, code: int):
-        message = ERRORS[code]
-        content = ERROR_MSG_TEMPLATE.format(code, message).encode()
+        message = constants.ERRORS[code]
+        content = constants.ERROR_MSG_TEMPLATE.format(code, message).encode()
 
         self.add_default_headers(code, message)
         self.add_header('Connection', 'close')
@@ -142,7 +141,7 @@ class RequestHandler:
     @staticmethod
     def get_file_type(path):
         _, ext = posixpath.splitext(path)
-        return EXT_TO_MIME.get(ext.lower(), 'application/octet-stream')
+        return constants.EXT_TO_MIME.get(ext.lower(), 'application/octet-stream')
 
     def add_default_headers(self, code: int, msg: str = ''):
         self.headers.append(f'HTTP/1.1 {code} {msg}\r\n'.encode())
@@ -167,12 +166,12 @@ class RequestHandler:
         if len(request_parts) == 3:
             self.request_method, self.request_path, self.request_version = request_parts
             if self.request_version != 'HTTP/1.1':
-                self.error_response(BAD_REQUEST)
+                self.error_response(constants.BAD_REQUEST)
                 return False
         try:
             self._read_headers(self.read_file)
         except ValueError:
-            self.error_response(BAD_REQUEST)
+            self.error_response(constants.BAD_REQUEST)
             return False
         return True
 
@@ -205,14 +204,14 @@ class RequestHandler:
     def make_response(self):
         path = self.translate_path(self.request_path)
         if os.path.isdir(path):
-            index_path = os.path.join(path, INDEX_FILE)
+            index_path = os.path.join(path, constants.INDEX_FILE)
             if os.path.exists(index_path):
                 path = index_path
             else:
-                self.error_response(NOT_FOUND)
+                self.error_response(constants.NOT_FOUND)
                 return
         if path.endswith('/'):
-            self.error_response(NOT_FOUND)
+            self.error_response(constants.NOT_FOUND)
             return
 
         if os.path.exists(path):
@@ -220,7 +219,7 @@ class RequestHandler:
             try:
                 with open(path, 'rb') as f:
                     content = f.read()
-                    self.add_default_headers(OK, 'OK')
+                    self.add_default_headers(constants.OK, 'OK')
                     self.add_header('Content-type', mime_type)
                     self.add_header('Content-Length', len(content))
                     self.complete_headers()
@@ -228,9 +227,9 @@ class RequestHandler:
 
             except Exception as err:
                 logger.error(err)
-                self.error_response(INTERNAL_ERROR)
+                self.error_response(constants.INTERNAL_ERROR)
         else:
-            self.error_response(NOT_FOUND)
+            self.error_response(constants.NOT_FOUND)
 
     def translate_path(self, path: str):
         path = path.split('?', 1)[0]
