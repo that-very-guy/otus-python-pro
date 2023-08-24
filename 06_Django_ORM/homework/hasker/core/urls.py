@@ -17,15 +17,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
 
-from hasker.views import account, hasker
-
+from hasker.views import hasker
 urlpatterns = [
+    path('account/', include('account.urls')),
     path('', hasker.index, name='index'),
     path('ask/', hasker.ask, name='ask'),
     path('question/<str:pk>/', hasker.question_detail, name='question_detail'),
-    path('account/register/', account.register, name='register'),
-    path('account/profile/', account.profile, name='profile'),
-    path('accounts/', include('django.contrib.auth.urls')),
 ]
 
 urlpatterns = urlpatterns + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

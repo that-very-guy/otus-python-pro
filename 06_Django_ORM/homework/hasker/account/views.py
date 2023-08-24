@@ -4,32 +4,25 @@ from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 
-from hasker.forms import RegisterUserForm, UpdateUserForm, UserProfileForm
+from .forms import RegisterUserForm, UpdateUserForm, UserProfileForm
 
 AUTH_USER = get_user_model()
 
 
 def register(request, *args, **kwargs):
-    print('1111111')
-    """Страница регистрации нового пользователя"""
     if request.method == 'POST':
-        print('1111111 POST')
-        """save new user"""
         form = RegisterUserForm(request.POST)
         if form.is_valid():
             form.save()
-            return HttpResponseRedirect(reverse('login'))
+            return HttpResponseRedirect(reverse('account:login'))
     else:
-        print('1111111 GET')
         form = RegisterUserForm()
-    return render(request, 'registration/register.html', context={'form': form})
+    return render(request, 'account/register.html', context={'form': form})
 
 
 @login_required
 def profile(request, *args, **kwargs):
-    """Страница профиля пользователя"""
     if request.method == 'POST':
-        """save changed user profile"""
         u_form = UpdateUserForm(request.POST, instance=request.user)
         p_form = UserProfileForm(request.POST, request.FILES, instance=request.user.profile)
         if u_form.is_valid() and p_form.is_valid():
@@ -38,8 +31,8 @@ def profile(request, *args, **kwargs):
             if p_form.has_changed():
                 profile = p_form.save(commit=False)
                 profile.save()
-            return render(request, 'registration/profile.html', context={'u_form': u_form, 'p_form': p_form})
+            return render(request, 'account/profile.html', context={'u_form': u_form, 'p_form': p_form})
     else:
         u_form = UpdateUserForm(instance=request.user)
         p_form = UserProfileForm(instance=request.user.profile)
-    return render(request, 'registration/profile.html', context={'u_form': u_form, 'p_form': p_form})
+    return render(request, 'account/profile.html', context={'u_form': u_form, 'p_form': p_form})
