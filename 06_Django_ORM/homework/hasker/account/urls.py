@@ -4,7 +4,7 @@ from . import views
 
 app_name = 'account'
 urlpatterns = [
-    path('register/', views.register, name='register'),
-    path('profile/', views.profile, name='profile'),
+    path('register/', views.RegisterView.as_view(), name='register'),
+    path('profile/', views.ProfileView.as_view(), name='profile'),
     path('', include('django.contrib.auth.urls')),
 ]

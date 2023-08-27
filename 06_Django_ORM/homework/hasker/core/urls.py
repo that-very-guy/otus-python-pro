@@ -18,11 +18,12 @@ from django.conf.urls.static import static
 from django.urls import include, path
 
 from hasker.views import hasker
+
 urlpatterns = [
     path('account/', include('account.urls')),
-    path('', hasker.index, name='index'),
-    path('ask/', hasker.ask, name='ask'),
-    path('question/<str:pk>/', hasker.question_detail, name='question_detail'),
+    path('', hasker.IndexView.as_view(), name='index'),
+    path('ask/', hasker.AskView.as_view(), name='ask'),
+    path('question/<str:pk>/', hasker.QuestionDetailView.as_view(), name='question_detail'),
 ]
 
 urlpatterns = urlpatterns + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
