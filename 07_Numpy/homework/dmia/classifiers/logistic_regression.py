@@ -7,6 +7,9 @@ class LogisticRegression:
         self.w = None
         self.loss_history = None
 
+    def sigmoid_norm(self, z):
+        return 1.0 / (1.0 + np.exp(-z))
+
     def train(self, X, y, learning_rate=1e-3, reg=1e-5, num_iters=100,
               batch_size=200, verbose=False):
         """
@@ -34,7 +37,7 @@ class LogisticRegression:
 
         # Run stochastic gradient descent to optimize W
         self.loss_history = []
-        for it in xrange(num_iters):
+        for it in range(num_iters):
             #########################################################################
             # TODO:                                                                 #
             # Sample batch_size elements from the training data and their           #
@@ -47,6 +50,9 @@ class LogisticRegression:
             # replacement is faster than sampling without replacement.              #
             #########################################################################
 
+            indices = np.random.choice(num_train, batch_size)
+            X_batch = X[indices]
+            y_batch = y[indices]
 
             #########################################################################
             #                       END OF YOUR CODE                                #
@@ -61,13 +67,14 @@ class LogisticRegression:
             # Update the weights using the gradient and the learning rate.          #
             #########################################################################
 
+            self.w -= learning_rate * gradW
 
             #########################################################################
             #                       END OF YOUR CODE                                #
             #########################################################################
 
             if verbose and it % 100 == 0:
-                print 'iteration %d / %d: loss %f' % (it, num_iters, loss)
+                print('iteration %d / %d: loss %f' % (it, num_iters, loss))
 
         return self
 
@@ -92,7 +99,8 @@ class LogisticRegression:
         # Hint: It might be helpful to use np.vstack and np.sum                   #
         ###########################################################################
 
-
+        predictions = self.sigmoid_norm(X.dot(self.w.T))
+        y_proba = np.vstack([1 - predictions, predictions]).T
 
         ###########################################################################
         #                           END OF YOUR CODE                              #
@@ -117,7 +125,7 @@ class LogisticRegression:
         # Implement this method. Store the predicted labels in y_pred.            #
         ###########################################################################
         y_proba = self.predict_proba(X, append_bias=True)
-        y_pred = ...
+        y_pred = np.argmax(y_proba, axis=1)
 
         ###########################################################################
         #                           END OF YOUR CODE                              #
@@ -138,15 +146,23 @@ class LogisticRegression:
         loss = 0
         # Compute loss and gradient. Your code should not contain python loops.
 
+        y_preds = self.sigmoid_norm(X_batch.dot(self.w))
+        loss = -np.dot(y_batch, np.log(y_preds)) - np.dot((1.0 - y_batch), np.log(1.0 - y_preds))
+        dw = (y_preds - y_batch) * X_batch
 
         # Right now the loss is a sum over all training examples, but we want it
-        # to be an average instead so we divide by num_train.
+        # to be an average instead, so we divide by num_train.
         # Note that the same thing must be done with gradient.
 
+        num_train = X_batch.shape[0]
+        dw /= num_train
+        loss /= num_train
 
         # Add regularization to the loss and gradient.
         # Note that you have to exclude bias term in regularization.
 
+        loss += (reg / (2.0 * num_train)) * np.dot(self.w[:-1], self.w[:-1])
+        dw[:-1] = dw[:-1] + (reg * self.w[:-1]) / num_train
 
         return loss, dw
 
