@@ -1,8 +1,12 @@
+from argparse import ArgumentParser
 import asyncio
 import logging
 import os
 import time
 
+import aiofiles
+from aiofiles.os import mkdir as aio_mkdir
+from aiofiles.os import path as aio_path
 import aiohttp
 import bs4
 
@@ -39,13 +43,13 @@ async def get_url(session: aiohttp.ClientSession, url: str):
 
 async def download_page(session: aiohttp.ClientSession, url: str, article_id: int):
     path = f'{OUTPUT_DIR}/{article_id}'
-    if not os.path.exists(path):
-        os.mkdir(path)
+    if not await aio_path.exists(path):
+        await aio_mkdir(path)
     page = await get_url(session, url)
     if page:
         name = str(len(list(os.scandir(path)))).zfill(3)
-        with open(f'{path}/{name}.html', 'wb') as f:
-            f.write(await page.read())
+        async with aiofiles.open(f'{path}/{name}.html', 'wb') as f:
+            await f.write(await page.read())
 
 
 async def download_children(session: aiohttp.ClientSession, url: str, article_id: int):
@@ -83,12 +87,15 @@ async def get_new_articles(url: str):
         await asyncio.gather(*tasks)
 
 
-async def parse_site(url):
+async def parse_site(url: str, sleep: int):
     while True:
         await get_new_articles(url)
-        time.sleep(60)  # there is no use of using async sleep here
+        time.sleep(sleep)  # there is no use of using async sleep here
 
 
 if __name__ == '__main__':
+    parser = ArgumentParser()
+    parser.add_argument('--sleep', type=int, default=60)
+    args = parser.parse_args()
     prepare_env()
-    asyncio.run(parse_site(TOP_ARTICLES_URL))
+    asyncio.run(parse_site(TOP_ARTICLES_URL, args.sleep))
